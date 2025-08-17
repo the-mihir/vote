@@ -263,7 +263,7 @@ def get_rankings():
 
     rankings = []
     total_votes = get_total_votes()
-    
+
     for i, (party, votes) in enumerate(sorted_parties, 1):
         rankings.append({
             'rank': i,
@@ -662,13 +662,13 @@ RESULTS_HTML = """
     <div style="background: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 10px; margin: 20px 0;">
         <p style="font-size: 18px; color: #FFD700;">📊 রিয়েল টাইম ফলাফল | ⚡ তাৎক্ষণিক আপডেট</p>
         <p style="font-size: 16px;">আরো মানুষকে ভোট দিতে উৎসাহিত করুন! 👥</p>
-    </div>
-    
-    <!-- Total Votes Banner -->
-    <div class="total-votes-banner">
-        <div style="font-size: 1.5em; margin-bottom: 10px;">🗳️ মোট ভোট</div>
-        <div class="total-votes-number" id="total-votes-display">{{ total_votes }}</div>
-        <div style="font-size: 1.2em;">জন ভোটার অংশগ্রহণ করেছেন</div>
+        
+        <!-- Total Votes Display -->
+        <div class="total-votes-banner">
+            <div style="font-size: 1.3em; margin-bottom: 8px;">🗳️ মোট ভোট</div>
+            <div class="total-votes-number" id="total-votes-display">{{ total_votes }}</div>
+            <div style="font-size: 1em;">জন ভোটার অংশগ্রহণ করেছেন</div>
+        </div>
     </div>
 </div>
 
@@ -685,6 +685,8 @@ RESULTS_HTML = """
         📊 ফলাফল রিয়েল টাইমে আপডেট হচ্ছে
     </p>
 </div>
+{% else %}
+<a href="/" class="back-btn">
 {% else %}
 <a href="/" class="back-btn">← পূর্বের পাতায় যান/a>
 {% endif %}
