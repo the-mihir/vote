@@ -210,7 +210,8 @@ def has_voted(ip_address):
     """Check if an IP address has already voted"""
     try:
         result = execute_query(
-            "SELECT * FROM voters WHERE ip_address = ?", (ip_address,), fetch=True)
+            "SELECT * FROM voters WHERE ip_address = %s", (ip_address,), fetch=True
+        )
         return result is not None
     except Exception as e:
         print(f"Error checking vote status: {e}")
