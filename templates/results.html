@@ -18,7 +18,7 @@
 </div>
 
 {% if not has_voted %}
-<a href="/" class="back-btn">← আবার ভোট দিন</a>
+<a href="/" class="back-btn">← পূর্বের পাতায় যান</a>
 {% endif %}
 
 <div
@@ -44,12 +44,21 @@
 <script>
     function updateResults() {
         fetch('/api/results')
-            .then(response => response.json())
-            .then(rankings => {
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
                 const container = document.getElementById('results-container');
                 container.innerHTML = '';
 
-                rankings.forEach((item, index) => {
+                // Update total votes display
+                const totalVotesDisplay = document.getElementById('total-votes-display');
+                if (totalVotesDisplay) {
+                    totalVotesDisplay.textContent = data.total_votes;
+                }
+
+                data.rankings.forEach((item, index) => {
                     const card = document.createElement('div');
                     card.className = `results-card rank-${item.rank}`;
 
@@ -70,7 +79,7 @@
             .catch(error => {
                 console.error('Error loading results:', error);
                 document.getElementById('results-container').innerHTML =
-                    '<div style="color: #FF6B6B;">ফলাফল লোড করতে সমস্যা হচ্ছে</div>';
+                    '<div style="color: #FF6B6B;">ফলাফল লোড করতে সমস্যা হচ্ছে। পুনরায় চেষ্টা করুন।</div>';
             });
     }
 

@@ -1,31 +1,35 @@
-
 <!DOCTYPE html>
 <html lang="bn">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" type="image/png" href="https://i.imgur.com/favicon.png">
+
     <title>{% block title %}বাংলাদেশ জনমত সংগ্রহ{% endblock %}</title>
-    
-    <!-- Open Graph Meta Tags for Facebook/Social Media -->
+
+    <!-- Updated Open Graph Meta Tags -->
     <meta property="og:title" content="🗳️ বাংলাদেশ জনমত সংগ্রহ - আপনার মতামত দিন!" />
-    <meta property="og:description" content="🔥 এখনই ভোট দিন! দেখুন কোন দল এগিয়ে আছে। রিয়েল টাইম ফলাফল দেখুন এবং আপনার পছন্দের দলকে সমর্থন করুন। ১ ক্লিকেই ভোট দিন!" />
+    <meta property="og:description"
+        content="🔥 এখনই ভোট দিন! দেখুন কোন দল এগিয়ে আছে। রিয়েল টাইম ফলাফল দেখুন এবং আপনার পছন্দের দলকে সমর্থন করুন। ১ ক্লিকেই ভোট দিন!" />
     <meta property="og:image" content="https://i.imgur.com/8YzW5pK.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:url" content="{{ request.url }}" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="বাংলাদেশ জনমত সংগ্রহ" />
-    
+
     <!-- Twitter Card Meta Tags -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="🗳️ বাংলাদেশ জনমত সংগ্রহ - আপনার ভোট দিন!" />
     <meta name="twitter:description" content="🔥 এখনই ভোট দিন! রিয়েল টাইম ফলাফল দেখুন। কোন দল জিতছে?" />
     <meta name="twitter:image" content="https://i.imgur.com/8YzW5pK.png" />
-    
+
     <!-- Additional Meta Tags -->
-    <meta name="description" content="বাংলাদেশের রাজনৈতিক দলগুলোর জনপ্রিয়তা জানুন। রিয়েল টাইম ভোটিং এবং ফলাফল দেখুন।" />
+    <meta name="description"
+        content="বাংলাদেশের রাজনৈতিক দলগুলোর জনপ্রিয়তা জানুন। রিয়েল টাইম ভোটিং এবং ফলাফল দেখুন।" />
     <meta name="keywords" content="বাংলাদেশ, নির্বাচন, ভোট, জনমত, রাজনীতি, আওয়ামী লীগ, বিএনপি, জামায়াত" />
-    
+
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -35,6 +39,7 @@
             min-height: 100vh;
             color: white;
         }
+
         .container {
             max-width: 800px;
             margin: 0 auto;
@@ -44,12 +49,14 @@
             backdrop-filter: blur(10px);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
+
         h1 {
             text-align: center;
             margin-bottom: 30px;
             font-size: 2.5em;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
         }
+
         .party-button {
             display: block;
             width: 100%;
@@ -63,11 +70,13 @@
             transition: all 0.3s ease;
             font-size: 16px;
         }
+
         .party-button:hover {
             background: rgba(255, 255, 255, 0.3);
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
+
         .results-card {
             background: rgba(255, 255, 255, 0.1);
             margin: 15px 0;
@@ -76,16 +85,37 @@
             border-left: 5px solid #fff;
             transition: all 0.3s ease;
         }
+
         .results-card:hover {
             transform: translateY(-3px);
             box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
         }
-        .rank-1 { border-left-color: #FFD700; background: rgba(255, 215, 0, 0.1); }
-        .rank-2 { border-left-color: #C0C0C0; background: rgba(192, 192, 192, 0.1); }
-        .rank-3 { border-left-color: #CD7F32; background: rgba(205, 127, 50, 0.1); }
-        .rank-4 { border-left-color: #FF6B6B; background: rgba(255, 107, 107, 0.1); }
-        .rank-5 { border-left-color: #6C5CE7; background: rgba(108, 92, 231, 0.1); }
-        
+
+        .rank-1 {
+            border-left-color: #FFD700;
+            background: rgba(255, 215, 0, 0.1);
+        }
+
+        .rank-2 {
+            border-left-color: #C0C0C0;
+            background: rgba(192, 192, 192, 0.1);
+        }
+
+        .rank-3 {
+            border-left-color: #CD7F32;
+            background: rgba(205, 127, 50, 0.1);
+        }
+
+        .rank-4 {
+            border-left-color: #FF6B6B;
+            background: rgba(255, 107, 107, 0.1);
+        }
+
+        .rank-5 {
+            border-left-color: #6C5CE7;
+            background: rgba(108, 92, 231, 0.1);
+        }
+
         .meme-img {
             width: 100px;
             height: 100px;
@@ -94,11 +124,13 @@
             float: right;
             margin-left: 20px;
         }
+
         .vote-count {
             font-size: 2em;
             font-weight: bold;
             color: #FFD700;
         }
+
         .back-btn {
             display: inline-block;
             padding: 10px 20px;
@@ -109,26 +141,40 @@
             margin-top: 20px;
             transition: all 0.3s ease;
         }
+
         .back-btn:hover {
             background: rgba(255, 255, 255, 0.3);
         }
+
         .loading {
             text-align: center;
             padding: 20px;
         }
+
         .pulse {
             animation: pulse 2s infinite;
         }
+
         @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+
+            100% {
+                opacity: 1;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         {% block content %}{% endblock %}
     </div>
 </body>
+
 </html>

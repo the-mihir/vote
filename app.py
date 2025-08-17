@@ -163,44 +163,44 @@ def init_db():
 
 
 def execute_query(query, params=None, fetch=False):
-    """
-    Execute database query with proper connection handling.
-    This function automatically converts psycopg2-style '%s' placeholders
-    to sqlite3-style '?' when running against SQLite.
-    """
-    database_url = os.environ.get('DATABASE_URL')
-    using_postgres = bool(database_url and database_url.startswith('postgres'))
-
-    # If using sqlite and query uses %s placeholders, convert them to ?
-    if not using_postgres:
-        # Only replace literal %s placeholders.
-        # (If you need more complex parsing, switch to regex.)
-        query = query.replace('%s', '?')
-
-    conn = get_db_connection()
+    """Execute database query with proper error handling and connection management"""
     try:
-        c = conn.cursor()
-        if params:
-            c.execute(query, params)
-        else:
-            c.execute(query)
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-        if fetch:
-            qstr = query.strip().lower()
-            if qstr.startswith('select'):
-                if 'count(' in qstr:
-                    result = c.fetchone()
-                else:
-                    result = c.fetchall()
+        if not using_postgres:
+            # Convert %s to ? for SQLite
+            query = query.replace('%s', '?')
+
+        try:
+            if params:
+                cursor.execute(query, params)
             else:
-                result = c.fetchall()
-        else:
-            result = None
+                cursor.execute(query)
 
-        conn.commit()
-        return result
+            result = None
+            if fetch:
+                if query.lower().strip().startswith('select'):
+                    if 'count(' in query.lower():
+                        result = cursor.fetchone()[0]
+                    else:
+                        result = cursor.fetchall()
+
+            conn.commit()
+            return result
+
+        except Exception as e:
+            conn.rollback()
+            app.logger.error(f"Database query error: {str(e)}")
+            raise
+        finally:
+            cursor.close()
+    except Exception as e:
+        app.logger.error(f"Database connection error: {str(e)}")
+        raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def has_voted(ip_address):
@@ -688,9 +688,8 @@ RESULTS_HTML = """
 </div>
 {% else %}
 <a href="/" class="back-btn">
-{% else %}
-<a href="/" class="back-btn">← পূর্বের পাতায় যান/a>
 {% endif %}
+<a href="/" class="back-btn">← পূর্বের পাতায় যান/a>
 
 <div style="text-align: center; margin-top: 30px; background: rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 15px;">
     <h3 style="color: #FFD700;">📱 বন্ধুদের সাথে শেয়ার করুন!</h3>
@@ -786,4 +785,5 @@ with open('templates/index.html', 'w', encoding='utf-8') as f:
     f.write(INDEX_HTML)
 
 with open('templates/results.html', 'w', encoding='utf-8') as f:
+    f.write(RESULTS_HTML)
     f.write(RESULTS_HTML)
