@@ -232,7 +232,7 @@ def get_vote_counts():
                 "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True)
             if result:
                 # result is a tuple like (count,)
-                count = result
+                count = result[0]
             else:
                 count = 0
         except Exception as e:
@@ -243,6 +243,18 @@ def get_vote_counts():
     return vote_counts
 
 
+def get_total_votes():
+    """Get total number of votes cast"""
+    try:
+        result = execute_query("SELECT COUNT(*) FROM votes", fetch=True)
+        if result:
+            return result[0]
+        return 0
+    except Exception as e:
+        print(f"get_total_votes error: {e}")
+        return 0
+
+
 def get_rankings():
     """Get parties ranked by vote count"""
     vote_counts = get_vote_counts()
@@ -250,15 +262,18 @@ def get_rankings():
                             key=lambda x: x[1], reverse=True)
 
     rankings = []
+    total_votes = get_total_votes()
+    
     for i, (party, votes) in enumerate(sorted_parties, 1):
         rankings.append({
             'rank': i,
             'party': party,
             'votes': votes,
+            'percentage': round((votes / total_votes * 100), 1) if total_votes > 0 else 0,
             'meme': RANKING_MEMES.get(i, RANKING_MEMES[5])
         })
 
-    return rankings
+    return rankings, total_votes
 
 
 @app.route('/')
@@ -322,14 +337,18 @@ def results():
         client_ip = client_ip.split(',')[0].strip()
 
     has_user_voted = has_voted(client_ip)
-    rankings = get_rankings()
-    return render_template('results.html', rankings=rankings, has_voted=has_user_voted)
+    rankings, total_votes = get_rankings()
+    return render_template('results.html', rankings=rankings, has_voted=has_user_voted, total_votes=total_votes)
 
 
 @app.route('/api/results')
 def api_results():
     """API endpoint for getting current results"""
-    return jsonify(get_rankings())
+    rankings, total_votes = get_rankings()
+    return jsonify({
+        'rankings': rankings,
+        'total_votes': total_votes
+    })
 
 
 @app.route('/health')
@@ -343,15 +362,22 @@ def health():
     })
 
 
-if __name__ == '__main__':
-    print("🚀 Starting Bangladesh Opinion Poll App...")
-
-    # Initialize database
+def initialize_database():
+    """Initialize database tables if they don't exist"""
+    print("🔄 Initializing database...")
     try:
         init_db()
+        print("✅ Database initialized successfully!")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
-        exit(1)
+        raise e
+
+
+# Initialize database when the application starts
+initialize_database()
+
+if __name__ == '__main__':
+    print("🚀 Starting Bangladesh Opinion Poll App...")
 
     # Production ready configuration
     port = int(os.environ.get('PORT', 5000))
@@ -398,10 +424,17 @@ BASE_HTML = """
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 50%, #27ae60 100%);
             min-height: 100vh;
             color: white;
+            animation: backgroundShift 10s ease-in-out infinite alternate;
         }
+        
+        @keyframes backgroundShift {
+            0% { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 50%, #27ae60 100%); }
+            100% { background: linear-gradient(135deg, #27ae60 0%, #2ecc71 50%, #e74c3c 100%); }
+        }
+        
         .container {
             max-width: 800px;
             margin: 0 auto;
@@ -501,6 +534,43 @@ BASE_HTML = """
             50% { opacity: 0.5; }
             100% { opacity: 1; }
         }
+        
+        .total-votes-banner {
+            background: linear-gradient(45deg, #e74c3c, #27ae60);
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin: 20px 0;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            animation: bannerGlow 3s ease-in-out infinite alternate;
+        }
+        
+        @keyframes bannerGlow {
+            0% { 
+                background: linear-gradient(45deg, #e74c3c, #27ae60);
+                box-shadow: 0 8px 32px rgba(231, 76, 60, 0.3);
+            }
+            100% { 
+                background: linear-gradient(45deg, #27ae60, #e74c3c);
+                box-shadow: 0 8px 32px rgba(39, 174, 96, 0.3);
+            }
+        }
+        
+        .total-votes-number {
+            font-size: 3em;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            margin: 10px 0;
+        }
+        
+        .percentage-display {
+            font-size: 1.2em;
+            color: #E8F5E8;
+            margin-left: 10px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -593,6 +663,13 @@ RESULTS_HTML = """
         <p style="font-size: 18px; color: #FFD700;">📊 রিয়েল টাইম ফলাফল | ⚡ তাৎক্ষণিক আপডেট</p>
         <p style="font-size: 16px;">আরো মানুষকে ভোট দিতে উৎসাহিত করুন! 👥</p>
     </div>
+    
+    <!-- Total Votes Banner -->
+    <div class="total-votes-banner">
+        <div style="font-size: 1.5em; margin-bottom: 10px;">🗳️ মোট ভোট</div>
+        <div class="total-votes-number" id="total-votes-display">{{ total_votes }}</div>
+        <div style="font-size: 1.2em;">জন ভোটার অংশগ্রহণ করেছেন</div>
+    </div>
 </div>
 
 <div id="results-container">
@@ -609,7 +686,7 @@ RESULTS_HTML = """
     </p>
 </div>
 {% else %}
-<a href="/" class="back-btn">← আপনি ভোট দিয়েছেন, ধন্যবাদ!</a>
+<a href="/" class="back-btn">← পূর্বের পাতায় যান/a>
 {% endif %}
 
 <div style="text-align: center; margin-top: 30px; background: rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 15px;">
