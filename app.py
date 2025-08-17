@@ -162,11 +162,19 @@ def init_db():
             raise
 
 
+using_postgres = bool(os.environ.get('DATABASE_URL') and
+                      os.environ.get('DATABASE_URL').startswith('postgres'))
+
+
 def execute_query(query, params=None, fetch=False):
     """Execute database query with proper error handling and connection management"""
+    global using_postgres
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+
+        # Check database type for each connection
+        using_postgres = isinstance(conn, psycopg2.extensions.connection)
 
         if not using_postgres:
             # Convert %s to ? for SQLite
