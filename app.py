@@ -239,7 +239,8 @@ def get_vote_counts():
     for party in PARTIES:
         try:
             result = execute_query(
-                "SELECT COUNT(*) FROM votes WHERE party = ?", (party,), fetch=True)
+                "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True
+            )
             count = result[0] if result else 0
         except Exception as e:
             print(f"Error getting vote count for {party}: {e}")
