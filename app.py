@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import os
 import psycopg2
-import psycopg2.extensions
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get(
@@ -19,10 +19,11 @@ else:
 # Party list
 PARTIES = [
     "বাংলাদেশ জাতীয়তাবাদী দল - বি.এন.পি",
-    "বাংলাদেশ আওয়ামী লীগ",
+    "বাংলাদেশ আওয়ামী লীগ"
     "জাতীয় নাগরিক পার্টি - এনসিপি",
     "বাংলাদেশ জামায়াতে ইসলামী",
     "জাতীয় পার্টি",
+
 ]
 
 # Meme URLs for different rankings
@@ -34,61 +35,18 @@ RANKING_MEMES = {
     5: "https://i.imgflip.com/2/1g8my4.jpg"  # Crying Cat
 }
 
-# Database configuration - PostgreSQL support with fallback
 
-
-def get_db_connection():
-    """Get database connection with PostgreSQL support and SQLite fallback"""
+def init_db():
+    """Initialize the database"""
     database_url = os.environ.get('DATABASE_URL')
 
-    try:
-        if database_url and database_url.startswith('postgres'):
-            # Fix postgres:// URL to postgresql://
-            if database_url.startswith('postgres://'):
-                database_url = database_url.replace(
-                    'postgres://', 'postgresql://', 1)
-
-            return psycopg2.connect(database_url)
-        else:
-            return sqlite3.connect('voting.db')
-
-    except (psycopg2.Error, sqlite3.Error) as e:
-        app.logger.error(f"Database connection error: {str(e)}")
-        raise
-
-
-def is_postgresql_available():
-    """Check if PostgreSQL connection is available"""
-    database_url = os.environ.get('DATABASE_URL')
-    if not database_url or not database_url.startswith('postgres'):
-        return False
-
-    try:
-        import psycopg2
+    if database_url and database_url.startswith('postgres'):
+        # PostgreSQL for production (Render.com)
         if database_url.startswith('postgres://'):
             database_url = database_url.replace(
                 'postgres://', 'postgresql://', 1)
-        conn = psycopg2.connect(database_url)
-        conn.close()
-        return True
-    except:
-        return False
 
-
-def init_db():
-    """Initialize the database with proper error handling"""
-    database_url = os.environ.get('DATABASE_URL')
-    using_postgresql = False
-
-    if database_url and database_url.startswith('postgres'):
         try:
-            import psycopg2
-
-            # Fix postgres:// URL to postgresql://
-            if database_url.startswith('postgres://'):
-                database_url = database_url.replace(
-                    'postgres://', 'postgresql://', 1)
-
             conn = psycopg2.connect(database_url)
             c = conn.cursor()
 
@@ -108,116 +66,130 @@ def init_db():
 
             conn.commit()
             conn.close()
-            print("✅ PostgreSQL database initialized successfully!")
-            using_postgresql = True
-
-        except ImportError as e:
-            print(f"❌ PostgreSQL module not available: {e}")
-            print("💡 To fix: pip install psycopg2-binary")
-            print("🔄 Falling back to SQLite...")
-            using_postgresql = False
-        except Exception as e:
-            print(f"❌ PostgreSQL connection failed: {e}")
-            print("🔄 Falling back to SQLite...")
-            using_postgresql = False
-
-    if not using_postgresql:
-        # SQLite fallback
-        try:
-            conn = sqlite3.connect('voting.db')
-            c = conn.cursor()
-
-            # Create votes table
-            c.execute('''CREATE TABLE IF NOT EXISTS votes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                party TEXT NOT NULL,
-                ip_address TEXT NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )''')
-
-            # Create voters table
-            c.execute('''CREATE TABLE IF NOT EXISTS voters (
-                ip_address TEXT PRIMARY KEY,
-                voted_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )''')
-
-            conn.commit()
-            conn.close()
-            print("✅ SQLite database initialized successfully!")
+            print("PostgreSQL database initialized successfully!")
 
         except Exception as e:
-            print(f"❌ SQLite initialization failed: {e}")
-            raise
+            print(f"PostgreSQL error: {e}")
+            # Fallback to SQLite
+            init_sqlite()
+    else:
+        # SQLite for local development
+        init_sqlite()
 
 
-using_postgres = bool(os.environ.get('DATABASE_URL') and
-                      os.environ.get('DATABASE_URL').startswith('postgres'))
+def init_sqlite():
+    """Initialize SQLite database"""
+    try:
+        conn = sqlite3.connect('voting.db')
+        c = conn.cursor()
+
+        # Create votes table
+        c.execute('''CREATE TABLE IF NOT EXISTS votes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            party TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
+
+        # Create voters table
+        c.execute('''CREATE TABLE IF NOT EXISTS voters (
+            ip_address TEXT PRIMARY KEY,
+            voted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
+
+        conn.commit()
+        conn.close()
+        print("SQLite database initialized successfully!")
+
+    except Exception as e:
+        print(f"SQLite error: {e}")
+
+
+def get_db_connection():
+    """Get database connection"""
+    database_url = os.environ.get('DATABASE_URL')
+
+    if database_url and database_url.startswith('postgres'):
+        # PostgreSQL connection
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace(
+                'postgres://', 'postgresql://', 1)
+        return psycopg2.connect(database_url)
+    else:
+        # SQLite connection
+        return sqlite3.connect('voting.db')
 
 
 def execute_query(query, params=None, fetch=False):
-    """Execute database query with proper error handling and connection management"""
-    global using_postgres
-    try:
+    """Execute database query with proper connection handling"""
+    database_url = os.environ.get('DATABASE_URL')
+
+    if database_url and database_url.startswith('postgres'):
+        # PostgreSQL execution
         conn = get_db_connection()
-        cursor = conn.cursor()
+        c = conn.cursor()
+        if params:
+            c.execute(query, params)
+        else:
+            c.execute(query)
 
-        # Check database type for each connection
-        using_postgres = isinstance(conn, psycopg2.extensions.connection)
-
-        if not using_postgres:
-            # Convert %s to ? for SQLite
-            query = query.replace('%s', '?')
-
-        try:
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-
+        if fetch:
+            result = c.fetchone() if 'COUNT' in query or 'SELECT' in query else c.fetchall()
+        else:
             result = None
-            if fetch:
-                if query.lower().strip().startswith('select'):
-                    if 'count(' in query.lower():
-                        result = cursor.fetchone()[0]
-                    else:
-                        result = cursor.fetchall()
 
-            conn.commit()
-            return result
+        conn.commit()
+        conn.close()
+        return result
+    else:
+        # SQLite execution
+        conn = get_db_connection()
+        c = conn.cursor()
+        if params:
+            c.execute(query, params)
+        else:
+            c.execute(query)
 
-        except Exception as e:
-            conn.rollback()
-            app.logger.error(f"Database query error: {str(e)}")
-            raise
-        finally:
-            cursor.close()
-    except Exception as e:
-        app.logger.error(f"Database connection error: {str(e)}")
-        raise
-    finally:
-        if conn:
-            conn.close()
+        if fetch:
+            result = c.fetchone() if 'COUNT' in query or 'SELECT' in query else c.fetchall()
+        else:
+            result = None
+
+        conn.commit()
+        conn.close()
+        return result
 
 
 def has_voted(ip_address):
     """Check if an IP address has already voted"""
     try:
         result = execute_query(
-            "SELECT ip_address FROM voters WHERE ip_address = %s", (ip_address,), fetch=True)
-        # For sqlite this query will be converted to '?', and fetch returns a tuple or None
+            "SELECT * FROM voters WHERE ip_address = %s", (ip_address,), fetch=True)
         return result is not None
-    except Exception as e:
-        # Log error if you want: print(f"has_voted error: {e}")
-        return False
+    except:
+        # Try SQLite format
+        try:
+            result = execute_query(
+                "SELECT * FROM voters WHERE ip_address = ?", (ip_address,), fetch=True)
+            return result is not None
+        except:
+            return False
 
 
 def cast_vote(party, ip_address):
     """Cast a vote and record the IP"""
-    # Use parameterized queries; execute_query will adapt placeholders
-    execute_query(
-        "INSERT INTO votes (party, ip_address) VALUES (%s, %s)", (party, ip_address))
-    execute_query(
-        "INSERT INTO voters (ip_address) VALUES (%s)", (ip_address,))
+    try:
+        # PostgreSQL format
+        execute_query(
+            "INSERT INTO votes (party, ip_address) VALUES (%s, %s)", (party, ip_address))
+        execute_query(
+            "INSERT INTO voters (ip_address) VALUES (%s)", (ip_address,))
+    except:
+        # SQLite format
+        execute_query(
+            "INSERT INTO votes (party, ip_address) VALUES (?, ?)", (party, ip_address))
+        execute_query(
+            "INSERT INTO voters (ip_address) VALUES (?)", (ip_address,))
 
 
 def get_vote_counts():
@@ -225,31 +197,21 @@ def get_vote_counts():
     vote_counts = {}
     for party in PARTIES:
         try:
+            # PostgreSQL format
             result = execute_query(
                 "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True)
-            if result:
-                # result is a tuple like (count,) for both PostgreSQL and SQLite
-                count = result[0] if isinstance(result, tuple) else result
-            else:
+            count = result[0] if result else 0
+        except:
+            # SQLite format
+            try:
+                result = execute_query(
+                    "SELECT COUNT(*) FROM votes WHERE party = ?", (party,), fetch=True)
+                count = result[0] if result else 0
+            except:
                 count = 0
-        except Exception as e:
-            print(f"get_vote_counts error for {party}: {e}")
-            count = 0
         vote_counts[party] = count
 
     return vote_counts
-
-
-def get_total_votes():
-    """Get total number of votes cast"""
-    try:
-        result = execute_query("SELECT COUNT(*) FROM votes", fetch=True)
-        if result:
-            return result[0]
-        return 0
-    except Exception as e:
-        print(f"get_total_votes error: {e}")
-        return 0
 
 
 def get_rankings():
@@ -259,18 +221,15 @@ def get_rankings():
                             key=lambda x: x[1], reverse=True)
 
     rankings = []
-    total_votes = get_total_votes()
-
     for i, (party, votes) in enumerate(sorted_parties, 1):
         rankings.append({
             'rank': i,
             'party': party,
             'votes': votes,
-            'percentage': round((votes / total_votes * 100), 1) if total_votes > 0 else 0,
             'meme': RANKING_MEMES.get(i, RANKING_MEMES[5])
         })
 
-    return rankings, total_votes
+    return rankings
 
 
 @app.route('/')
@@ -303,22 +262,18 @@ def vote():
     if client_ip and ',' in client_ip:
         client_ip = client_ip.split(',')[0].strip()
 
+    if has_voted(client_ip):
+        return jsonify({'success': False, 'message': 'আপনি ইতিমধ্যে ভোট দিয়েছেন!'})
+
+    party = request.json.get('party')
+    if party not in PARTIES:
+        return jsonify({'success': False, 'message': 'ভুল দল নির্বাচন!'})
+
     try:
-        if has_voted(client_ip):
-            return jsonify({'success': False, 'message': 'আপনি ইতিমধ্যে ভোট দিয়েছেন!'})
-
-        party = request.json.get('party')
-        if not party:
-            return jsonify({'success': False, 'message': 'দল নির্বাচন করুন!'})
-
-        if party not in PARTIES:
-            return jsonify({'success': False, 'message': 'ভুল দল নির্বাচন!'})
-
         cast_vote(party, client_ip)
         return jsonify({'success': True, 'message': 'আপনার ভোট সফলভাবে গ্রহণ করা হয়েছে!'})
     except Exception as e:
-        app.logger.error(f"Vote submission error: {str(e)}")
-        return jsonify({'success': False, 'message': 'ভোট দিতে সমস্যা হয়েছে! অনুগ্রহ করে আবার চেষ্টা করুন।'})
+        return jsonify({'success': False, 'message': 'ভোট দিতে সমস্যা হয়েছে!'})
 
 
 @app.route('/results')
@@ -334,54 +289,21 @@ def results():
         client_ip = client_ip.split(',')[0].strip()
 
     has_user_voted = has_voted(client_ip)
-    rankings, total_votes = get_rankings()
-    return render_template('results.html', rankings=rankings, has_voted=has_user_voted, total_votes=total_votes)
+    rankings = get_rankings()
+    return render_template('results.html', rankings=rankings, has_voted=has_user_voted)
 
 
 @app.route('/api/results')
 def api_results():
     """API endpoint for getting current results"""
-    rankings, total_votes = get_rankings()
-    return jsonify({
-        'rankings': rankings,
-        'total_votes': total_votes
-    })
+    return jsonify(get_rankings())
 
-
-@app.route('/health')
-def health():
-    """Health check endpoint"""
-    db_status = "PostgreSQL" if is_postgresql_available() else "SQLite"
-    return jsonify({
-        'status': 'healthy',
-        'database': db_status,
-        'timestamp': datetime.now().isoformat()
-    })
-
-
-def initialize_database():
-    """Initialize database tables if they don't exist"""
-    print("🔄 Initializing database...")
-    try:
-        init_db()
-        print("✅ Database initialized successfully!")
-    except Exception as e:
-        print(f"❌ Database initialization failed: {e}")
-        raise e
-
-
-# Initialize database when the application starts
-initialize_database()
 
 if __name__ == '__main__':
-    print("🚀 Starting Bangladesh Opinion Poll App...")
-
+    init_db()
     # Production ready configuration
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
-
-    print(f"🌐 Server starting on port {port}")
-    print(f"🔧 Debug mode: {debug}")
 
     app.run(host='0.0.0.0', port=port, debug=debug)
 
@@ -399,7 +321,7 @@ BASE_HTML = """
     <!-- Open Graph Meta Tags for Facebook/Social Media -->
     <meta property="og:title" content="🗳️ বাংলাদেশ জনমত সংগ্রহ - আপনার মতামত দিন!" />
     <meta property="og:description" content="🔥 এখনই ভোট দিন! দেখুন কোন দল এগিয়ে আছে। রিয়েল টাইম ফলাফল দেখুন এবং আপনার পছন্দের দলকে সমর্থন করুন। ১ ক্লিকেই ভোট দিন!" />
-    <meta property="og:image" content="https://cdn.bdnews24.com/bdnews24/media/bdnews24-english/2024-01/78ea831f-a6e1-4a29-8740-44b2699c10e7/dhaka_17_bypolls_170723_37.jpg" />
+    <meta property="og:image" content="https://i.imgur.com/8YzW5pK.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:url" content="{{ request.url }}" />
@@ -410,7 +332,7 @@ BASE_HTML = """
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="🗳️ বাংলাদেশ জনমত সংগ্রহ - আপনার ভোট দিন!" />
     <meta name="twitter:description" content="🔥 এখনই ভোট দিন! রিয়েল টাইম ফলাফল দেখুন। কোন দল জিতছে?" />
-    <meta name="twitter:image" content="https://cdn.bdnews24.com/bdnews24/media/bdnews24-english/2024-01/78ea831f-a6e1-4a29-8740-44b2699c10e7/dhaka_17_bypolls_170723_37.jpg" />
+    <meta name="twitter:image" content="https://i.imgur.com/8YzW5pK.png" />
     
     <!-- Additional Meta Tags -->
     <meta name="description" content="বাংলাদেশের রাজনৈতিক দলগুলোর জনপ্রিয়তা জানুন। রিয়েল টাইম ভোটিং এবং ফলাফল দেখুন।" />
@@ -421,17 +343,10 @@ BASE_HTML = """
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 20px;
-            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 50%, #27ae60 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             color: white;
-            animation: backgroundShift 10s ease-in-out infinite alternate;
         }
-        
-        @keyframes backgroundShift {
-            0% { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 50%, #27ae60 100%); }
-            100% { background: linear-gradient(135deg, #27ae60 0%, #2ecc71 50%, #e74c3c 100%); }
-        }
-        
         .container {
             max-width: 800px;
             margin: 0 auto;
@@ -531,43 +446,6 @@ BASE_HTML = """
             50% { opacity: 0.5; }
             100% { opacity: 1; }
         }
-        
-        .total-votes-banner {
-            background: linear-gradient(45deg, #e74c3c, #27ae60);
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            margin: 20px 0;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            animation: bannerGlow 3s ease-in-out infinite alternate;
-        }
-        
-        @keyframes bannerGlow {
-            0% { 
-                background: linear-gradient(45deg, #e74c3c, #27ae60);
-                box-shadow: 0 8px 32px rgba(231, 76, 60, 0.3);
-            }
-            100% { 
-                background: linear-gradient(45deg, #27ae60, #e74c3c);
-                box-shadow: 0 8px 32px rgba(39, 174, 96, 0.3);
-            }
-        }
-        
-        .total-votes-number {
-            font-size: 3em;
-            font-weight: bold;
-            color: #FFD700;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
-            margin: 10px 0;
-        }
-        
-        .percentage-display {
-            font-size: 1.2em;
-            color: #E8F5E8;
-            margin-left: 10px;
-            font-weight: bold;
-        }
     </style>
 </head>
 <body>
@@ -659,13 +537,6 @@ RESULTS_HTML = """
     <div style="background: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 10px; margin: 20px 0;">
         <p style="font-size: 18px; color: #FFD700;">📊 রিয়েল টাইম ফলাফল | ⚡ তাৎক্ষণিক আপডেট</p>
         <p style="font-size: 16px;">আরো মানুষকে ভোট দিতে উৎসাহিত করুন! 👥</p>
-        
-        <!-- Total Votes Display -->
-        <div class="total-votes-banner">
-            <div style="font-size: 1.3em; margin-bottom: 8px;">🗳️ মোট ভোট</div>
-            <div class="total-votes-number" id="total-votes-display">{{ total_votes }}</div>
-            <div style="font-size: 1em;">জন ভোটার অংশগ্রহণ করেছেন</div>
-        </div>
     </div>
 </div>
 
@@ -683,9 +554,8 @@ RESULTS_HTML = """
     </p>
 </div>
 {% else %}
-<a href="/" class="back-btn">
+<a href="/" class="back-btn">← আবার ভোট দিন</a>
 {% endif %}
-<a href="/" class="back-btn">← পূর্বের পাতায় যান/a>
 
 <div style="text-align: center; margin-top: 30px; background: rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 15px;">
     <h3 style="color: #FFD700;">📱 বন্ধুদের সাথে শেয়ার করুন!</h3>
@@ -781,5 +651,4 @@ with open('templates/index.html', 'w', encoding='utf-8') as f:
     f.write(INDEX_HTML)
 
 with open('templates/results.html', 'w', encoding='utf-8') as f:
-    f.write(RESULTS_HTML)
     f.write(RESULTS_HTML)
