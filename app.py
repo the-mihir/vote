@@ -231,12 +231,13 @@ def get_vote_counts():
             result = execute_query(
                 "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True)
             if result:
-                # result is a tuple like (count,)
-                count = result
+                # Extract the count from the tuple (count,)
+                count = result[0]  # Get first element of the tuple
             else:
                 count = 0
         except Exception as e:
-            # Log if desired: print(f"get_vote_counts error for {party}: {e}")
+            # Log error if desired
+            # print(f"get_vote_counts error for {party}: {e}")
             count = 0
         vote_counts[party] = count
 
