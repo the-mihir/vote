@@ -291,17 +291,22 @@ def vote():
     if client_ip and ',' in client_ip:
         client_ip = client_ip.split(',')[0].strip()
 
-    if has_voted(client_ip):
-        return jsonify({'success': False, 'message': 'আপনি ইতিমধ্যে ভোট দিয়েছেন!'})
+    try:
+        if has_voted(client_ip):
+            return jsonify({'success': False, 'message': 'আপনি ইতিমধ্যে ভোট দিয়েছেন!'})
 
-    party = request.json.get('party')
-    if party not in PARTIES:
-        return jsonify({'success': False, 'message': 'ভুল দল নির্বাচন!'})
+        party = request.json.get('party')
+        if not party:
+            return jsonify({'success': False, 'message': 'দল নির্বাচন করুন!'})
 
-    if cast_vote(party, client_ip):
+        if party not in PARTIES:
+            return jsonify({'success': False, 'message': 'ভুল দল নির্বাচন!'})
+
+        cast_vote(party, client_ip)
         return jsonify({'success': True, 'message': 'আপনার ভোট সফলভাবে গ্রহণ করা হয়েছে!'})
-    else:
-        return jsonify({'success': False, 'message': 'ভোট দিতে সমস্যা হয়েছে!'})
+    except Exception as e:
+        app.logger.error(f"Vote submission error: {str(e)}")
+        return jsonify({'success': False, 'message': 'ভোট দিতে সমস্যা হয়েছে! অনুগ্রহ করে আবার চেষ্টা করুন।'})
 
 
 @app.route('/results')
