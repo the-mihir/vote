@@ -3,6 +3,8 @@ import sqlite3
 import json
 from datetime import datetime
 import os
+import psycopg2
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get(
@@ -20,7 +22,8 @@ PARTIES = [
     "বাংলাদেশ আওয়ামী লীগ",
     "জাতীয় নাগরিক পার্টি - এনসিপি",
     "বাংলাদেশ জামায়াতে ইসলামী",
-    "জাতীয় পার্টি"
+    "জাতীয় পার্টি",
+
 ]
 
 # Meme URLs for different rankings
@@ -35,75 +38,179 @@ RANKING_MEMES = {
 
 def init_db():
     """Initialize the database"""
-    db_path = os.environ.get('DATABASE_URL', 'voting.db')
-    if db_path.startswith('postgres://'):
-        db_path = db_path.replace('postgres://', 'postgresql://', 1)
+    database_url = os.environ.get('DATABASE_URL')
 
-    # For SQLite (local/free hosting)
-    if not db_path.startswith('postgresql://'):
-        conn = sqlite3.connect(db_path)
+    if database_url and database_url.startswith('postgres'):
+        # PostgreSQL for production (Render.com)
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace(
+                'postgres://', 'postgresql://', 1)
+
+        try:
+            conn = psycopg2.connect(database_url)
+            c = conn.cursor()
+
+            # Create votes table
+            c.execute('''CREATE TABLE IF NOT EXISTS votes (
+                id SERIAL PRIMARY KEY,
+                party TEXT NOT NULL,
+                ip_address TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+
+            # Create voters table
+            c.execute('''CREATE TABLE IF NOT EXISTS voters (
+                ip_address TEXT PRIMARY KEY,
+                voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+
+            conn.commit()
+            conn.close()
+            print("PostgreSQL database initialized successfully!")
+
+        except Exception as e:
+            print(f"PostgreSQL error: {e}")
+            # Fallback to SQLite
+            init_sqlite()
+    else:
+        # SQLite for local development
+        init_sqlite()
+
+
+def init_sqlite():
+    """Initialize SQLite database"""
+    try:
+        conn = sqlite3.connect('voting.db')
         c = conn.cursor()
 
         # Create votes table
-        c.execute('''CREATE TABLE IF NOT EXISTS votes
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      party TEXT NOT NULL,
-                      ip_address TEXT NOT NULL,
-                      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS votes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            party TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
 
-        # Create voters table to track IPs
-        c.execute('''CREATE TABLE IF NOT EXISTS voters
-                     (ip_address TEXT PRIMARY KEY,
-                      voted_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        # Create voters table
+        c.execute('''CREATE TABLE IF NOT EXISTS voters (
+            ip_address TEXT PRIMARY KEY,
+            voted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
 
         conn.commit()
         conn.close()
+        print("SQLite database initialized successfully!")
+
+    except Exception as e:
+        print(f"SQLite error: {e}")
 
 
 def get_db_connection():
     """Get database connection"""
-    db_path = os.environ.get('DATABASE_URL', 'voting.db')
-    return sqlite3.connect(db_path)
+    database_url = os.environ.get('DATABASE_URL')
+
+    if database_url and database_url.startswith('postgres'):
+        # PostgreSQL connection
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace(
+                'postgres://', 'postgresql://', 1)
+        return psycopg2.connect(database_url)
+    else:
+        # SQLite connection
+        return sqlite3.connect('voting.db')
+
+
+def execute_query(query, params=None, fetch=False):
+    """Execute database query with proper connection handling"""
+    database_url = os.environ.get('DATABASE_URL')
+
+    if database_url and database_url.startswith('postgres'):
+        # PostgreSQL execution
+        conn = get_db_connection()
+        c = conn.cursor()
+        if params:
+            c.execute(query, params)
+        else:
+            c.execute(query)
+
+        if fetch:
+            result = c.fetchone() if 'COUNT' in query or 'SELECT' in query else c.fetchall()
+        else:
+            result = None
+
+        conn.commit()
+        conn.close()
+        return result
+    else:
+        # SQLite execution
+        conn = get_db_connection()
+        c = conn.cursor()
+        if params:
+            c.execute(query, params)
+        else:
+            c.execute(query)
+
+        if fetch:
+            result = c.fetchone() if 'COUNT' in query or 'SELECT' in query else c.fetchall()
+        else:
+            result = None
+
+        conn.commit()
+        conn.close()
+        return result
 
 
 def has_voted(ip_address):
     """Check if an IP address has already voted"""
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM voters WHERE ip_address = ?", (ip_address,))
-    result = c.fetchone()
-    conn.close()
-    return result is not None
+    try:
+        result = execute_query(
+            "SELECT * FROM voters WHERE ip_address = %s", (ip_address,), fetch=True)
+        return result is not None
+    except:
+        # Try SQLite format
+        try:
+            result = execute_query(
+                "SELECT * FROM voters WHERE ip_address = ?", (ip_address,), fetch=True)
+            return result is not None
+        except:
+            return False
 
 
 def cast_vote(party, ip_address):
     """Cast a vote and record the IP"""
-    conn = get_db_connection()
-    c = conn.cursor()
-
-    # Insert vote
-    c.execute("INSERT INTO votes (party, ip_address) VALUES (?, ?)",
-              (party, ip_address))
-
-    # Record IP as having voted
-    c.execute("INSERT INTO voters (ip_address) VALUES (?)", (ip_address,))
-
-    conn.commit()
-    conn.close()
+    try:
+        # PostgreSQL format
+        execute_query(
+            "INSERT INTO votes (party, ip_address) VALUES (%s, %s)", (party, ip_address))
+        execute_query(
+            "INSERT INTO voters (ip_address) VALUES (%s)", (ip_address,))
+    except:
+        # SQLite format
+        execute_query(
+            "INSERT INTO votes (party, ip_address) VALUES (?, ?)", (party, ip_address))
+        execute_query(
+            "INSERT INTO voters (ip_address) VALUES (?)", (ip_address,))
 
 
 def get_vote_counts():
     """Get current vote counts for all parties"""
-    conn = get_db_connection()
-    c = conn.cursor()
-
     vote_counts = {}
     for party in PARTIES:
-        c.execute("SELECT COUNT(*) FROM votes WHERE party = ?", (party,))
-        count = c.fetchone()[0]
+        try:
+            # PostgreSQL format
+            result = execute_query(
+                "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True)
+            count = result[0] if result else 0
+        except:
+            # SQLite format
+            try:
+                result = execute_query(
+                    "SELECT COUNT(*) FROM votes WHERE party = ?", (party,), fetch=True)
+                count = result[0] if result else 0
+            except:
+                count = 0
         vote_counts[party] = count
 
-    conn.close()
     return vote_counts
 
 
@@ -545,15 +652,3 @@ with open('templates/index.html', 'w', encoding='utf-8') as f:
 
 with open('templates/results.html', 'w', encoding='utf-8') as f:
     f.write(RESULTS_HTML)
-
-print("✅ Simple Flask Voting App created successfully!")
-print("\n🚀 To run the application:")
-print("1. Install required packages: pip install flask")
-print("2. Run: python app.py")
-print("3. Open http://127.0.0.1:5000 (or the port shown in terminal)")
-print("\n🔧 Changes made:")
-print("- Removed Flask-SocketIO (no socket permission issues)")
-print("- Added AJAX polling every 5 seconds for real-time updates")
-print("- Added Bengali text and better animations")
-print("- Added social sharing buttons")
-print("- Fixed port conflict issues")
