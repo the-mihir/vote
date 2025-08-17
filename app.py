@@ -232,7 +232,7 @@ def get_vote_counts():
                 "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True)
             if result:
                 # result is a tuple like (count,)
-                count = result, [object Object],
+                count = result
             else:
                 count = 0
         except Exception as e:
