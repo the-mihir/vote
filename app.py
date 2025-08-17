@@ -249,12 +249,19 @@ def get_rankings():
     sorted_parties = sorted(vote_counts.items(),
                             key=lambda x: x[1], reverse=True)
 
+    # Calculate total votes
+    total_votes = sum(vote_counts.values())
+
     rankings = []
     for i, (party, votes) in enumerate(sorted_parties, 1):
+        # Calculate percentage
+        percentage = (votes / total_votes * 100) if total_votes > 0 else 0
+
         rankings.append({
             'rank': i,
             'party': party,
             'votes': votes,
+            'percentage': round(percentage, 1),
             'meme': RANKING_MEMES.get(i, RANKING_MEMES[5])
         })
 
@@ -383,7 +390,7 @@ BASE_HTML = """
     <!-- Open Graph Meta Tags for Facebook/Social Media -->
     <meta property="og:title" content="🗳️ বাংলাদেশ জনমত সংগ্রহ - আপনার মতামত দিন!" />
     <meta property="og:description" content="🔥 এখনই ভোট দিন! দেখুন কোন দল এগিয়ে আছে। রিয়েল টাইম ফলাফল দেখুন এবং আপনার পছন্দের দলকে সমর্থন করুন। ১ ক্লিকেই ভোট দিন!" />
-    <meta property="og:image" content="https://i.imgur.com/8YzW5pK.png" />
+    <meta property="og:image" content="https://cdn.bdnews24.com/bdnews24/media/bdnews24-english/2024-01/78ea831f-a6e1-4a29-8740-44b2699c10e7/dhaka_17_bypolls_170723_37.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:url" content="{{ request.url }}" />
@@ -394,7 +401,7 @@ BASE_HTML = """
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="🗳️ বাংলাদেশ জনমত সংগ্রহ - আপনার ভোট দিন!" />
     <meta name="twitter:description" content="🔥 এখনই ভোট দিন! রিয়েল টাইম ফলাফল দেখুন। কোন দল জিতছে?" />
-    <meta name="twitter:image" content="https://i.imgur.com/8YzW5pK.png" />
+    <meta name="twitter:image" content="https://cdn.bdnews24.com/bdnews24/media/bdnews24-english/2024-01/78ea831f-a6e1-4a29-8740-44b2699c10e7/dhaka_17_bypolls_170723_37.jpg" />
     
     <!-- Additional Meta Tags -->
     <meta name="description" content="বাংলাদেশের রাজনৈতিক দলগুলোর জনপ্রিয়তা জানুন। রিয়েল টাইম ভোটিং এবং ফলাফল দেখুন।" />

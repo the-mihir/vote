@@ -168,6 +168,69 @@
                 opacity: 1;
             }
         }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 15px;
+                margin: 0 5px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+                margin-bottom: 20px;
+            }
+
+            .party-button {
+                padding: 12px;
+                font-size: 14px;
+                margin: 8px 0;
+            }
+
+            .results-card {
+                padding: 15px;
+                margin: 10px 0;
+            }
+
+            .meme-img {
+                width: 80px;
+                height: 80px;
+                margin-left: 10px;
+            }
+
+            .vote-count {
+                font-size: 1.5em;
+            }
+
+            .total-votes-banner {
+                padding: 15px 10px;
+            }
+
+            .total-votes-number {
+                font-size: 2em;
+            }
+
+            [style*="display: inline-block"] {
+                display: block !important;
+                width: 100% !important;
+                margin: 5px 0 !important;
+            }
+        }
+
+        /* Fix touch events on mobile */
+        @media (hover: none) {
+            .party-button:hover {
+                transform: none;
+            }
+
+            .results-card:hover {
+                transform: none;
+            }
+        }
     </style>
 </head>
 

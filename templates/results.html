@@ -5,13 +5,39 @@
 {% block content %}
 <div style="text-align: center; margin-bottom: 30px;">
     <h1>🏆 নির্বাচনী ফলাফল</h1>
-    {% if total_votes > 0 %}
-    <div style="background: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 10px; margin: 20px 0;">
-        <p style="font-size: 18px; color: #FFD700;">📊 রিয়েল টাইম ফলাফল | ⚡ তাৎক্ষণিক আপডেট</p>
-        <p style="font-size: 16px;">মোট ভোট: {{ total_votes }} 👥</p>
+    <div class="total-votes-banner">
+        <div style="font-size: 1.3em; margin-bottom: 8px;">🗳️ মোট ভোট</div>
+        <div class="total-votes-number" id="total-votes-display">{{ total_votes }}</div>
+        <div style="font-size: 1em;">জন ভোটার অংশগ্রহণ করেছেন</div>
     </div>
-    {% endif %}
 </div>
+
+<style>
+    /* Mobile specific styles for results page */
+    @media (max-width: 768px) {
+        .percentage-display {
+            display: block;
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+
+        .vote-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .share-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .share-buttons button {
+            margin: 0 !important;
+        }
+    }
+</style>
 
 <div id="results-container">
     <div class="loading pulse">ফলাফল লোড হচ্ছে...</div>
@@ -25,7 +51,7 @@
     style="text-align: center; margin-top: 30px; background: rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 15px;">
     <h3 style="color: #FFD700;">📱 বন্ধুদের সাথে শেয়ার করুন!</h3>
     <p>আরো মানুষকে ভোট দিতে উৎসাহিত করুন এবং আসল জনমত জানুন!</p>
-    <div style="margin: 15px 0;">
+    <div style="margin: 15px 0;" class="share-buttons">
         <button onclick="shareOnFacebook()" class="party-button"
             style="display: inline-block; width: auto; margin: 5px; padding: 10px 20px;">
             📘 Facebook এ শেয়ার করুন
@@ -44,15 +70,12 @@
 <script>
     function updateResults() {
         fetch('/api/results')
-            .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
                 const container = document.getElementById('results-container');
                 container.innerHTML = '';
 
-                // Update total votes display
+                // Update total votes
                 const totalVotesDisplay = document.getElementById('total-votes-display');
                 if (totalVotesDisplay) {
                     totalVotesDisplay.textContent = data.total_votes;
@@ -67,9 +90,13 @@
 
                     card.innerHTML = `
                         <img src="${item.meme}" alt="Rank ${item.rank} meme" class="meme-img">
-                        <h3>${rankEmoji} ${item.rank === 1 ? 'WINNER' : item.rank + getSuffix(item.rank) + ' Place'}</h3>
-                        <h4>${item.party}</h4>
-                        <div class="vote-count">${item.votes} ভোট</div>
+                        <div class="vote-info">
+                            <h3>${rankEmoji} ${item.rank === 1 ? 'WINNER' : item.rank + getSuffix(item.rank) + ' Place'}
+                                <span class="percentage-display">(${item.percentage}%)</span>
+                            </h3>
+                            <h4>${item.party}</h4>
+                            <div class="vote-count">${item.votes} ভোট</div>
+                        </div>
                         <div style="clear: both;"></div>
                     `;
 
