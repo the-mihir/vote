@@ -1,0 +1,102 @@
+
+{% extends "base.html" %}
+
+{% block title %}🏆 নির্বাচনী ফলাফল - বাংলাদেশ জনমত সংগ্রহ{% endblock %}
+
+{% block content %}
+<div style="text-align: center; margin-bottom: 30px;">
+    <h1>🏆 নির্বাচনী ফলাফল</h1>
+    <div style="background: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 10px; margin: 20px 0;">
+        <p style="font-size: 18px; color: #FFD700;">📊 রিয়েল টাইম ফলাফল | ⚡ তাৎক্ষণিক আপডেট</p>
+        <p style="font-size: 16px;">আরো মানুষকে ভোট দিতে উৎসাহিত করুন! 👥</p>
+    </div>
+</div>
+
+<div id="results-container">
+    <div class="loading pulse">ফলাফল লোড হচ্ছে...</div>
+</div>
+
+<a href="/" class="back-btn">← আবার ভোট দিন</a>
+
+<div style="text-align: center; margin-top: 30px; background: rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 15px;">
+    <h3 style="color: #FFD700;">📱 বন্ধুদের সাথে শেয়ার করুন!</h3>
+    <p>আরো মানুষকে ভোট দিতে উৎসাহিত করুন এবং আসল জনমত জানুন!</p>
+    <div style="margin: 15px 0;">
+        <button onclick="shareOnFacebook()" class="party-button" style="display: inline-block; width: auto; margin: 5px; padding: 10px 20px;">
+            📘 Facebook এ শেয়ার করুন
+        </button>
+        <button onclick="shareOnWhatsApp()" class="party-button" style="display: inline-block; width: auto; margin: 5px; padding: 10px 20px;">
+            💬 WhatsApp এ শেয়ার করুন
+        </button>
+        <button onclick="copyLink()" class="party-button" style="display: inline-block; width: auto; margin: 5px; padding: 10px 20px;">
+            🔗 লিংক কপি করুন
+        </button>
+    </div>
+</div>
+
+<script>
+    function updateResults() {
+        fetch('/api/results')
+            .then(response => response.json())
+            .then(rankings => {
+                const container = document.getElementById('results-container');
+                container.innerHTML = '';
+                
+                rankings.forEach((item, index) => {
+                    const card = document.createElement('div');
+                    card.className = `results-card rank-${item.rank}`;
+                    
+                    const rankEmojis = ['🥇', '🥈', '🥉', '😢', '💔'];
+                    const rankEmoji = rankEmojis[item.rank - 1] || '💔';
+                    
+                    card.innerHTML = `
+                        <img src="${item.meme}" alt="Rank ${item.rank} meme" class="meme-img">
+                        <h3>${rankEmoji} ${item.rank === 1 ? 'WINNER' : item.rank + getSuffix(item.rank) + ' Place'}</h3>
+                        <h4>${item.party}</h4>
+                        <div class="vote-count">${item.votes} ভোট</div>
+                        <div style="clear: both;"></div>
+                    `;
+                    
+                    container.appendChild(card);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading results:', error);
+                document.getElementById('results-container').innerHTML = 
+                    '<div style="color: #FF6B6B;">ফলাফল লোড করতে সমস্যা হচ্ছে</div>';
+            });
+    }
+    
+    function getSuffix(rank) {
+        if (rank === 1) return 'st';
+        if (rank === 2) return 'nd';
+        if (rank === 3) return 'rd';
+        return 'th';
+    }
+    
+    // Social sharing functions
+    function shareOnFacebook() {
+        const url = encodeURIComponent(window.location.origin);
+        const text = encodeURIComponent('🗳️ বাংলাদেশ জনমত সংগ্রহে আমি ভোট দিয়েছি! তুমিও দাও এবং দেখো কোন দল এগিয়ে আছে! 🔥');
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${text}`, '_blank');
+    }
+    
+    function shareOnWhatsApp() {
+        const url = encodeURIComponent(window.location.origin);
+        const text = encodeURIComponent('🗳️ বাংলাদেশ জনমত সংগ্রহ!\n\n🔥 এখনই ভোট দিন এবং রিয়েল টাইম ফলাফল দেখুন!\n📊 কোন দল এগিয়ে আছে জানুন!\n\n');
+        window.open(`https://wa.me/?text=${text}${url}`, '_blank');
+    }
+    
+    function copyLink() {
+        navigator.clipboard.writeText(window.location.origin).then(() => {
+            alert('✅ লিংক কপি হয়েছে! এখন যেকোনো জায়গায় শেয়ার করুন!');
+        });
+    }
+    
+    // Initial load
+    updateResults();
+    
+    // Auto refresh every 5 seconds for real-time updates
+    setInterval(updateResults, 5000);
+</script>
+{% endblock %}
