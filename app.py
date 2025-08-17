@@ -230,15 +230,16 @@ def get_vote_counts():
         try:
             result = execute_query(
                 "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True)
-            if result:
-                # result is a tuple like (count,)
-                count = result[0]
+            if result and isinstance(result[0], (tuple, list)):
+                count = result[0][0]  # Get first element of the first tuple
+            elif result:
+                count = result[0]  # If it's just a number
             else:
                 count = 0
+            vote_counts[party] = count
         except Exception as e:
-            # Log if desired: print(f"get_vote_counts error for {party}: {e}")
-            count = 0
-        vote_counts[party] = count
+            app.logger.error(f"Error getting vote count for {party}: {str(e)}")
+            vote_counts[party] = 0
 
     return vote_counts
 
@@ -257,23 +258,45 @@ def get_total_votes():
 
 def get_rankings():
     """Get parties ranked by vote count"""
-    vote_counts = get_vote_counts()
-    sorted_parties = sorted(vote_counts.items(),
-                            key=lambda x: x[1], reverse=True)
+    try:
+        vote_counts = get_vote_counts()
+        total_votes = get_total_votes()
 
-    rankings = []
-    total_votes = get_total_votes()
+        # Ensure total_votes is valid
+        if total_votes is None or not isinstance(total_votes, (int, float)):
+            total_votes = sum(vote_counts.values())
 
-    for i, (party, votes) in enumerate(sorted_parties, 1):
-        rankings.append({
-            'rank': i,
-            'party': party,
-            'votes': votes,
-            'percentage': round((votes / total_votes * 100), 1) if total_votes > 0 else 0,
-            'meme': RANKING_MEMES.get(i, RANKING_MEMES[5])
-        })
+        # Sort parties by vote count
+        sorted_parties = sorted(vote_counts.items(),
+                                key=lambda x: (x[1] if isinstance(
+                                    x[1], (int, float)) else 0),
+                                reverse=True)
 
-    return rankings, total_votes
+        rankings = []
+        for i, (party, votes) in enumerate(sorted_parties, 1):
+            # Ensure votes is a number
+            votes = votes if isinstance(votes, (int, float)) else 0
+
+            # Calculate percentage safely
+            try:
+                percentage = round((votes / total_votes * 100),
+                                   1) if total_votes > 0 else 0
+            except (ZeroDivisionError, TypeError):
+                percentage = 0
+
+            rankings.append({
+                'rank': i,
+                'party': party,
+                'votes': votes,
+                'percentage': percentage,
+                'meme': RANKING_MEMES.get(i, RANKING_MEMES[5])
+            })
+
+        return rankings, total_votes
+    except Exception as e:
+        app.logger.error(f"Error in get_rankings: {str(e)}")
+        # Return empty rankings in case of error
+        return [], 0
 
 
 @app.route('/')
