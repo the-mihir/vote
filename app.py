@@ -163,30 +163,33 @@ def init_db():
 
 
 def execute_query(query, params=None, fetch=False):
-    """Execute database query with proper connection handling"""
-    conn = None
+    """
+    Execute database query with proper connection handling.
+    This function automatically converts psycopg2-style '%s' placeholders
+    to sqlite3-style '?' when running against SQLite.
+    """
+    database_url = os.environ.get('DATABASE_URL')
+    using_postgres = bool(database_url and database_url.startswith('postgres'))
+
+    # If using sqlite and query uses %s placeholders, convert them to ?
+    if not using_postgres:
+        # Only replace literal %s placeholders.
+        # (If you need more complex parsing, switch to regex.)
+        query = query.replace('%s', '?')
+
+    conn = get_db_connection()
     try:
-        conn = get_db_connection()
-
-        # Check if this is a PostgreSQL connection
-        # psycopg2 connections have this attribute
-        is_postgres = hasattr(conn, 'autocommit')
-
         c = conn.cursor()
-
         if params:
-            if is_postgres:
-                # PostgreSQL uses %s placeholders
-                postgres_query = query.replace('?', '%s')
-                c.execute(postgres_query, params)
-            else:
-                # SQLite uses ? placeholders
-                c.execute(query, params)
+            c.execute(query, params)
         else:
             c.execute(query)
 
         if fetch:
-            if 'COUNT' in query.upper() or 'SELECT' in query.upper():
+            # For SELECT COUNT(*) and other selects -> fetchone; for others -> fetchall if needed
+            # We'll return fetchone() if query starts with SELECT (common case)
+            qstr = query.strip().lower()
+            if qstr.startswith('select'):
                 result = c.fetchone()
             else:
                 result = c.fetchall()
@@ -195,42 +198,29 @@ def execute_query(query, params=None, fetch=False):
 
         conn.commit()
         return result
-
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"Database query error: {e}")
-        raise
     finally:
-        if conn:
-            conn.close()
+        conn.close()
 
 
 def has_voted(ip_address):
     """Check if an IP address has already voted"""
     try:
         result = execute_query(
-            "SELECT * FROM voters WHERE ip_address = %s", (ip_address,), fetch=True
-        )
+            "SELECT ip_address FROM voters WHERE ip_address = %s", (ip_address,), fetch=True)
+        # For sqlite this query will be converted to '?', and fetch returns a tuple or None
         return result is not None
     except Exception as e:
-        print(f"Error checking vote status: {e}")
+        # Log error if you want: print(f"has_voted error: {e}")
         return False
 
 
 def cast_vote(party, ip_address):
     """Cast a vote and record the IP"""
-    try:
-        # Insert vote
-        execute_query(
-            "INSERT INTO votes (party, ip_address) VALUES (?, ?)", (party, ip_address))
-        # Record voter IP
-        execute_query(
-            "INSERT INTO voters (ip_address) VALUES (?)", (ip_address,))
-        return True
-    except Exception as e:
-        print(f"Error casting vote: {e}")
-        return False
+    # Use parameterized queries; execute_query will adapt placeholders
+    execute_query(
+        "INSERT INTO votes (party, ip_address) VALUES (%s, %s)", (party, ip_address))
+    execute_query(
+        "INSERT INTO voters (ip_address) VALUES (%s)", (ip_address,))
 
 
 def get_vote_counts():
@@ -239,11 +229,14 @@ def get_vote_counts():
     for party in PARTIES:
         try:
             result = execute_query(
-                "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True
-            )
-            count = result[0] if result else 0
+                "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True)
+            if result:
+                # result is a tuple like (count,)
+                count = result, [object Object],
+            else:
+                count = 0
         except Exception as e:
-            print(f"Error getting vote count for {party}: {e}")
+            # Log if desired: print(f"get_vote_counts error for {party}: {e}")
             count = 0
         vote_counts[party] = count
 
