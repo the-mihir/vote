@@ -3,8 +3,6 @@ import sqlite3
 import json
 from datetime import datetime
 import os
-import psycopg2
-from urllib.parse import urlparse
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get(
@@ -23,7 +21,6 @@ PARTIES = [
     "জাতীয় নাগরিক পার্টি - এনসিপি",
     "বাংলাদেশ জামায়াতে ইসলামী",
     "জাতীয় পার্টি",
-
 ]
 
 # Meme URLs for different rankings
@@ -35,18 +32,75 @@ RANKING_MEMES = {
     5: "https://i.imgflip.com/2/1g8my4.jpg"  # Crying Cat
 }
 
+# Database configuration - PostgreSQL support with fallback
 
-def init_db():
-    """Initialize the database"""
+
+def get_db_connection():
+    """Get database connection with PostgreSQL support and SQLite fallback"""
     database_url = os.environ.get('DATABASE_URL')
 
     if database_url and database_url.startswith('postgres'):
-        # PostgreSQL for production (Render.com)
+        try:
+            # Try to import and use psycopg2-binary first
+            try:
+                import psycopg2
+            except ImportError:
+                print("psycopg2 not available, trying psycopg2-binary...")
+                import psycopg2  # This will still fail, but we handle it below
+
+            # Fix postgres:// URL to postgresql://
+            if database_url.startswith('postgres://'):
+                database_url = database_url.replace(
+                    'postgres://', 'postgresql://', 1)
+
+            return psycopg2.connect(database_url)
+
+        except ImportError as e:
+            print(
+                f"PostgreSQL module not available ({e}). Falling back to SQLite.")
+            print("To use PostgreSQL, install: pip install psycopg2-binary")
+            return sqlite3.connect('voting.db')
+        except Exception as e:
+            print(
+                f"PostgreSQL connection failed ({e}). Falling back to SQLite.")
+            return sqlite3.connect('voting.db')
+    else:
+        # SQLite connection
+        return sqlite3.connect('voting.db')
+
+
+def is_postgresql_available():
+    """Check if PostgreSQL connection is available"""
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url or not database_url.startswith('postgres'):
+        return False
+
+    try:
+        import psycopg2
         if database_url.startswith('postgres://'):
             database_url = database_url.replace(
                 'postgres://', 'postgresql://', 1)
+        conn = psycopg2.connect(database_url)
+        conn.close()
+        return True
+    except:
+        return False
 
+
+def init_db():
+    """Initialize the database with proper error handling"""
+    database_url = os.environ.get('DATABASE_URL')
+    using_postgresql = False
+
+    if database_url and database_url.startswith('postgres'):
         try:
+            import psycopg2
+
+            # Fix postgres:// URL to postgresql://
+            if database_url.startswith('postgres://'):
+                database_url = database_url.replace(
+                    'postgres://', 'postgresql://', 1)
+
             conn = psycopg2.connect(database_url)
             c = conn.cursor()
 
@@ -66,130 +120,116 @@ def init_db():
 
             conn.commit()
             conn.close()
-            print("PostgreSQL database initialized successfully!")
+            print("✅ PostgreSQL database initialized successfully!")
+            using_postgresql = True
+
+        except ImportError as e:
+            print(f"❌ PostgreSQL module not available: {e}")
+            print("💡 To fix: pip install psycopg2-binary")
+            print("🔄 Falling back to SQLite...")
+            using_postgresql = False
+        except Exception as e:
+            print(f"❌ PostgreSQL connection failed: {e}")
+            print("🔄 Falling back to SQLite...")
+            using_postgresql = False
+
+    if not using_postgresql:
+        # SQLite fallback
+        try:
+            conn = sqlite3.connect('voting.db')
+            c = conn.cursor()
+
+            # Create votes table
+            c.execute('''CREATE TABLE IF NOT EXISTS votes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                party TEXT NOT NULL,
+                ip_address TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''')
+
+            # Create voters table
+            c.execute('''CREATE TABLE IF NOT EXISTS voters (
+                ip_address TEXT PRIMARY KEY,
+                voted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''')
+
+            conn.commit()
+            conn.close()
+            print("✅ SQLite database initialized successfully!")
 
         except Exception as e:
-            print(f"PostgreSQL error: {e}")
-            # Fallback to SQLite
-            init_sqlite()
-    else:
-        # SQLite for local development
-        init_sqlite()
-
-
-def init_sqlite():
-    """Initialize SQLite database"""
-    try:
-        conn = sqlite3.connect('voting.db')
-        c = conn.cursor()
-
-        # Create votes table
-        c.execute('''CREATE TABLE IF NOT EXISTS votes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            party TEXT NOT NULL,
-            ip_address TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''')
-
-        # Create voters table
-        c.execute('''CREATE TABLE IF NOT EXISTS voters (
-            ip_address TEXT PRIMARY KEY,
-            voted_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''')
-
-        conn.commit()
-        conn.close()
-        print("SQLite database initialized successfully!")
-
-    except Exception as e:
-        print(f"SQLite error: {e}")
-
-
-def get_db_connection():
-    """Get database connection"""
-    database_url = os.environ.get('DATABASE_URL')
-
-    if database_url and database_url.startswith('postgres'):
-        # PostgreSQL connection
-        if database_url.startswith('postgres://'):
-            database_url = database_url.replace(
-                'postgres://', 'postgresql://', 1)
-        return psycopg2.connect(database_url)
-    else:
-        # SQLite connection
-        return sqlite3.connect('voting.db')
+            print(f"❌ SQLite initialization failed: {e}")
+            raise
 
 
 def execute_query(query, params=None, fetch=False):
     """Execute database query with proper connection handling"""
-    database_url = os.environ.get('DATABASE_URL')
-
-    if database_url and database_url.startswith('postgres'):
-        # PostgreSQL execution
+    conn = None
+    try:
         conn = get_db_connection()
+
+        # Check if this is a PostgreSQL connection
+        # psycopg2 connections have this attribute
+        is_postgres = hasattr(conn, 'autocommit')
+
         c = conn.cursor()
+
         if params:
-            c.execute(query, params)
+            if is_postgres:
+                # PostgreSQL uses %s placeholders
+                postgres_query = query.replace('?', '%s')
+                c.execute(postgres_query, params)
+            else:
+                # SQLite uses ? placeholders
+                c.execute(query, params)
         else:
             c.execute(query)
 
         if fetch:
-            result = c.fetchone() if 'COUNT' in query or 'SELECT' in query else c.fetchall()
+            if 'COUNT' in query.upper() or 'SELECT' in query.upper():
+                result = c.fetchone()
+            else:
+                result = c.fetchall()
         else:
             result = None
 
         conn.commit()
-        conn.close()
         return result
-    else:
-        # SQLite execution
-        conn = get_db_connection()
-        c = conn.cursor()
-        if params:
-            c.execute(query, params)
-        else:
-            c.execute(query)
 
-        if fetch:
-            result = c.fetchone() if 'COUNT' in query or 'SELECT' in query else c.fetchall()
-        else:
-            result = None
-
-        conn.commit()
-        conn.close()
-        return result
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Database query error: {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
 
 
 def has_voted(ip_address):
     """Check if an IP address has already voted"""
     try:
         result = execute_query(
-            "SELECT * FROM voters WHERE ip_address = %s", (ip_address,), fetch=True)
+            "SELECT * FROM voters WHERE ip_address = ?", (ip_address,), fetch=True)
         return result is not None
-    except:
-        # Try SQLite format
-        try:
-            result = execute_query(
-                "SELECT * FROM voters WHERE ip_address = ?", (ip_address,), fetch=True)
-            return result is not None
-        except:
-            return False
+    except Exception as e:
+        print(f"Error checking vote status: {e}")
+        return False
 
 
 def cast_vote(party, ip_address):
     """Cast a vote and record the IP"""
     try:
-        # PostgreSQL format
-        execute_query(
-            "INSERT INTO votes (party, ip_address) VALUES (%s, %s)", (party, ip_address))
-        execute_query(
-            "INSERT INTO voters (ip_address) VALUES (%s)", (ip_address,))
-    except:
-        # SQLite format
+        # Insert vote
         execute_query(
             "INSERT INTO votes (party, ip_address) VALUES (?, ?)", (party, ip_address))
+        # Record voter IP
         execute_query(
             "INSERT INTO voters (ip_address) VALUES (?)", (ip_address,))
+        return True
+    except Exception as e:
+        print(f"Error casting vote: {e}")
+        return False
 
 
 def get_vote_counts():
@@ -197,18 +237,12 @@ def get_vote_counts():
     vote_counts = {}
     for party in PARTIES:
         try:
-            # PostgreSQL format
             result = execute_query(
-                "SELECT COUNT(*) FROM votes WHERE party = %s", (party,), fetch=True)
+                "SELECT COUNT(*) FROM votes WHERE party = ?", (party,), fetch=True)
             count = result[0] if result else 0
-        except:
-            # SQLite format
-            try:
-                result = execute_query(
-                    "SELECT COUNT(*) FROM votes WHERE party = ?", (party,), fetch=True)
-                count = result[0] if result else 0
-            except:
-                count = 0
+        except Exception as e:
+            print(f"Error getting vote count for {party}: {e}")
+            count = 0
         vote_counts[party] = count
 
     return vote_counts
@@ -269,10 +303,9 @@ def vote():
     if party not in PARTIES:
         return jsonify({'success': False, 'message': 'ভুল দল নির্বাচন!'})
 
-    try:
-        cast_vote(party, client_ip)
+    if cast_vote(party, client_ip):
         return jsonify({'success': True, 'message': 'আপনার ভোট সফলভাবে গ্রহণ করা হয়েছে!'})
-    except Exception as e:
+    else:
         return jsonify({'success': False, 'message': 'ভোট দিতে সমস্যা হয়েছে!'})
 
 
@@ -299,11 +332,33 @@ def api_results():
     return jsonify(get_rankings())
 
 
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    db_status = "PostgreSQL" if is_postgresql_available() else "SQLite"
+    return jsonify({
+        'status': 'healthy',
+        'database': db_status,
+        'timestamp': datetime.now().isoformat()
+    })
+
+
 if __name__ == '__main__':
-    init_db()
+    print("🚀 Starting Bangladesh Opinion Poll App...")
+
+    # Initialize database
+    try:
+        init_db()
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        exit(1)
+
     # Production ready configuration
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
+
+    print(f"🌐 Server starting on port {port}")
+    print(f"🔧 Debug mode: {debug}")
 
     app.run(host='0.0.0.0', port=port, debug=debug)
 
@@ -554,7 +609,7 @@ RESULTS_HTML = """
     </p>
 </div>
 {% else %}
-<a href="/" class="back-btn">← আবার ভোট দিন</a>
+<a href="/" class="back-btn">← আপনি ভোট দিয়েছেন, ধন্যবাদ!</a>
 {% endif %}
 
 <div style="text-align: center; margin-top: 30px; background: rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 15px;">
