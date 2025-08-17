@@ -3,6 +3,8 @@ import sqlite3
 import json
 from datetime import datetime
 import os
+import psycopg2
+import psycopg2.extensions
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get(
@@ -39,34 +41,20 @@ def get_db_connection():
     """Get database connection with PostgreSQL support and SQLite fallback"""
     database_url = os.environ.get('DATABASE_URL')
 
-    if database_url and database_url.startswith('postgres'):
-        try:
-            # Try to import and use psycopg2-binary first
-            try:
-                import psycopg2
-            except ImportError:
-                print("psycopg2 not available, trying psycopg2-binary...")
-                import psycopg2  # This will still fail, but we handle it below
-
+    try:
+        if database_url and database_url.startswith('postgres'):
             # Fix postgres:// URL to postgresql://
             if database_url.startswith('postgres://'):
                 database_url = database_url.replace(
                     'postgres://', 'postgresql://', 1)
 
             return psycopg2.connect(database_url)
+        else:
+            return sqlite3.connect('voting.db')
 
-        except ImportError as e:
-            print(
-                f"PostgreSQL module not available ({e}). Falling back to SQLite.")
-            print("To use PostgreSQL, install: pip install psycopg2-binary")
-            return sqlite3.connect('voting.db')
-        except Exception as e:
-            print(
-                f"PostgreSQL connection failed ({e}). Falling back to SQLite.")
-            return sqlite3.connect('voting.db')
-    else:
-        # SQLite connection
-        return sqlite3.connect('voting.db')
+    except (psycopg2.Error, sqlite3.Error) as e:
+        app.logger.error(f"Database connection error: {str(e)}")
+        raise
 
 
 def is_postgresql_available():
